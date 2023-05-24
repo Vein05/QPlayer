@@ -1,11 +1,15 @@
 from PyQt5.QtWidgets import QWidget, QListView, QComboBox, QPushButton, QLabel, QMessageBox, QApplication, QHBoxLayout,QVBoxLayout, QProgressBar, QSizePolicy
 from PyQt5.QtGui import QFont, QPixmap, QImage, QIcon
 from PyQt5.QtCore import Qt, QEvent, QAbstractListModel, QModelIndex, QVariant, QUrl, QSize, QRect, QTimer
-from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
+from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent, QMediaPlaylist
 import os, math
 import sys
 import sqlite3, json
 from utils.tag import Tag
+from utils import helper
+import random
+
+
 
 
 class SongListModel(QAbstractListModel):
@@ -156,7 +160,7 @@ class MusicControlsWidget(QWidget):
         progress_layout = QHBoxLayout()
         self.progress_bar = QProgressBar()
         self.elapsed_label = QLabel("0:00")
-        self.total_label = QLabel("")
+        self.total_label = QLabel("0:00")
         progress_layout.addWidget(self.elapsed_label)
         progress_layout.addWidget(self.progress_bar)
         progress_layout.addWidget(self.total_label)
@@ -197,7 +201,7 @@ class MusicControlsWidget(QWidget):
         self.shuffle_button.setIcon(QIcon("./icons/shuffle.png"))
         self.shuffle_button.setStyleSheet(css)
         self.shuffle_button.setIconSize(size)
-        self.shuffle_button.clicked.connect(self.on_shuffle)
+        self.shuffle_button.clicked.connect(self.on_shuffle_clicked)
         self.shuffle_button.setVisible(False)
 
 
@@ -205,7 +209,7 @@ class MusicControlsWidget(QWidget):
         self.repeat_button.setIcon(QIcon("./icons/repeat.png"))
         self.repeat_button.setStyleSheet(css)
         self.repeat_button.setIconSize(size)
-        self.repeat_button.clicked.connect(self.on_repeat)
+        self.repeat_button.clicked.connect(self.on_repeat_clicked)
         self.repeat_button.setVisible(False)
 
 
@@ -213,55 +217,112 @@ class MusicControlsWidget(QWidget):
         self.straight_button.setIcon(QIcon("./icons/straight.png"))
         self.straight_button.setStyleSheet(css)
         self.straight_button.setIconSize(size)
-        self.straight_button.clicked.connect(self.on_straight)
+        self.straight_button.clicked.connect(self.on_straight_clicked)
         self.straight_button.setVisible(True)
 
+        #make sure to update this when the song is changed
+
+        self.cover_button = QPushButton("")
+        self.cover_button.setStyleSheet(css)
+        self.cover_button.setIconSize(size)
+        self.cover_button.clicked.connect(self.on_cover_clicked)
+        # self.cover_button.setIcon(QIcon("/icons/default.png"))
+        # self.cover_button.setStyleSheet("")
         
 
+        buttons_layout.addWidget(self.cover_button)
         buttons_layout.addWidget(self.previous_button)
         buttons_layout.addWidget(self.play_button)
         buttons_layout.addWidget(self.pause_button)
         buttons_layout.addWidget(self.next_button)
         buttons_layout.addWidget(self.straight_button)
+        buttons_layout.addWidget(self.repeat_button)
+        buttons_layout.addWidget(self.shuffle_button)
 
         layout.addLayout(progress_layout)
         layout.addLayout(buttons_layout)
 
         self.setLayout(layout)
 
-    def update_progress(self):
-        pass
 
     def on_play_pause(self):
         self.api.play_pause_song(self.api.current_index)
 
     def on_next(self):
+        current_row = self.api.current_index.row()
+        next_row = current_row + 1
 
-        pass
+        if next_row < self.api.song_list_model.rowCount():
+            index = self.api.song_list_model.index(next_row, 0)
+            self.api.play_pause_song(index)
+
     def on_previous(self):
+        current_row = self.api.current_index.row()
+        previous_row = current_row - 1
 
-        pass
+        if previous_row >= 0:
+            index = self.api.song_list_model.index(previous_row, 0)
+            self.api.play_pause_song(index)
 
-    def on_shuffle(self):
-        pass
+    def on_shuffle_clicked(self):
+        #do repeat
+        self.shuffle_button.setVisible(False)
+        self.repeat_button.setVisible(True)
+        self.straight_button.setVisible(False)
+        self.api.repeat_playback_queue()
 
-    def on_straight(self):
-        pass
+    def on_straight_clicked(self):
+        #do shuffle
+        self.shuffle_button.setVisible(True)
+        self.repeat_button.setVisible(False)
+        self.straight_button.setVisible(False)
+        self.api.shuffle_playback_queue()
+
     
 
-    def on_repeat(self):
+    def on_repeat_clicked(self):
+        #do straight 
+        self.shuffle_button.setVisible(False)
+        self.repeat_button.setVisible(False)
+        self.straight_button.setVisible(True)
+        self.api.straight_playback_queue()
+
+
+    def on_cover_clicked(self):
+
         pass
+
+
+    def update_progress(self):
+        if self.api.media_player.duration() is not None and self.api.media_player.position() is not None:
+            duration = self.api.media_player.duration() / 1000  # Convert to seconds
+            position = self.api.media_player.position() / 1000  # Convert to seconds
+            progress = int((position / duration) * 100) if duration != 0 else 0
+            self.progress_bar.setValue(progress)
+            self.elapsed_label.setText(helper.get_time(int(position)))
+
+        # Check if the song has finished playing
+        if position >= duration:
+            self.api.progress_timer.stop()
+            self.api.stop_song()
 
 
 class MainWindow(QWidget):
-    def __init__(self, api):
+    def __init__(self, api, parent=None):
         super().__init__()
         self.api = api
+
+        
         self.setup_ui()
         self.media_player = QMediaPlayer()
         self.media_player.error.connect(self.handle_media_error)
+        self.media_player.mediaStatusChanged.connect(self.handle_media_status_changed)
+        self.media_player.stateChanged.connect(self.handle_player_state_changed)
         self.current_index = QModelIndex()
+        self.playback_queue = []
+        
 
+        self.progress_timer = None
     def setup_ui(self):
         # Initialize and set up the UI components
         self.setGeometry(500, 500, 534, 900)
@@ -286,6 +347,7 @@ class MainWindow(QWidget):
     def load_songs(self):
         songs = self.api.user_songs()
         self.song_list_model = SongListModel(songs)
+        self.populate_playback_queue()
         self.song_list_view = QListView(self)
         self.song_list_view.setModel(self.song_list_model)
         self.song_list_view.setStyleSheet('''
@@ -347,33 +409,121 @@ class MainWindow(QWidget):
 
     def sort_by_date_added(self):
         songs = self.song_list_model.songs
-        sorted_songs = sorted(songs, key=lambda x: x['path'])
+        sorted_songs = sorted(songs, key=lambda x: os.path.getmtime(x['path']))
         self.song_list_model = SongListModel(sorted_songs)
         self.song_list_view.setModel(self.song_list_model)
 
+
+
+    def populate_playback_queue(self):
+        self.playback_queue = list((self.song_list_model.songs))
+
+    def shuffle_playback_queue(self):
+        random.shuffle(self.playback_queue)
+
+    def repeat_playback_queue(self):
+        if self.current_index is not None:
+            current_row = self.current_index.row()
+            self.playback_queue = [self.playback_queue[current_row]]
+
+    def straight_playback_queue(self):
+        current_row = self.current_index.row()
+        self.playback_queue = self.playback_queue[current_row:] + self.playback_queue[:current_row]
+
+    def create_progress_timer(self):
+        self.progress_timer = QTimer()
+        self.progress_timer.timeout.connect(self.music_controls_widget.update_progress)
+
+
     def play_pause_song(self, index):
-        song_data = self.song_list_model.songs[index.row()]
-        # Create a QMediaContent object with the path
+
+        if self.progress_timer is None:
+            self.create_progress_timer()
+
+        if index.row() >= len(self.playback_queue):
+            index = self.song_list_model.index(0)
+
+        song_data = self.playback_queue[index.row()]
         media_content = QMediaContent(QUrl.fromLocalFile(song_data['path']))
-        # If the selected song is already playing, pause it. Otherwise, play it.
+
         if index == self.current_index:
             if self.media_player.state() == QMediaPlayer.PlayingState:
                 self.media_player.pause()
                 self.music_controls_widget.play_button.setVisible(True)
                 self.music_controls_widget.pause_button.setVisible(False)
+                if self.progress_timer is None:
+                    self.create_progress_timer()
+
+                self.progress_timer.stop()
             else:
                 self.media_player.play()
                 self.music_controls_widget.play_button.setVisible(False)
                 self.music_controls_widget.pause_button.setVisible(True)
-
-        # If a different song is clicked, play it and update the current index
+                self.progress_timer.start(1000)
         else:
             self.media_player.setMedia(media_content)
             self.media_player.play()
             self.music_controls_widget.play_button.setVisible(False)
             self.music_controls_widget.pause_button.setVisible(True)
             self.current_index = index
-            self.current_index = index
+
+        # Update cover image and time display
+        if song_data['cover_image']:
+            default_icon_path = "./icons/default.png"
+            current_icon_path = self.music_controls_widget.cover_button.icon().pixmap(256, 256).cacheKey()
+            if current_icon_path != default_icon_path:
+                pixmap = QPixmap()
+                pixmap.loadFromData(song_data['cover_image'])
+                self.music_controls_widget.cover_button.setIcon(QIcon(pixmap))
+        time = helper.get_time(song_data['duration'])
+        self.music_controls_widget.total_label.setText(f"{time}")
+
+        try:
+            self.progress_timer.start(1000)
+        except AttributeError:
+            pass
+
+
+    #     heading = self.findChild(QLabel, "heading")
+    #     heading.setText(song_data['name'])
+
+
+    #     if hasattr(self, 'marquee_timer'):
+    #         self.marquee_timer.stop()
+    #     self.marquee_timer = QTimer()
+    #     self.marquee_timer.timeout.connect(lambda: self.scroll_heading(heading))
+    #     self.marquee_timer.start(30)  # 30ms timer
+
+    # def scroll_heading(self, label):
+    #     width = label.fontMetrics().boundingRect(label.text()).width()
+    #     if label.x() < -width:
+    #         label.setX(self.window.width())
+    #     label.setX(label.x() - 1)
+
+    def stop_song(self):
+        # Stop the progress timer
+        if self.progress_timer is not None:
+            try:
+                self.progress_timer.stop()
+                self.progress_timer = None
+            except AttributeError:
+                pass
+
+        # Reset the progress bar and labels
+        self.music_controls_widget.progress_bar.setValue(0)
+        self.music_controls_widget.elapsed_label.setText("0:00")
+        # self.music_controls_widget.total_label.setText("0:00")
+
+    def handle_media_status_changed(self, status):
+        if status == QMediaPlayer.EndOfMedia:
+            current_index = self.current_index.row()
+            
+            #+1 for other conditions 0 for repeat condition
+            next_index = current_index + 1 if current_index < (self.song_list_model.rowCount() - 1) else 0
+            
+            self.play_pause_song(self.song_list_model.index(next_index))
+
+
 
     def eventFilter(self, obj, event):
         if event.type() == QEvent.KeyPress:
@@ -389,10 +539,28 @@ class MainWindow(QWidget):
         if error == QMediaPlayer.NoError:
             return
         elif error == QMediaPlayer.ResourceError:
-            error_message = "Error: No data in file"
+            error_message = "Paying next song in song list because of error : "
         else:
-            error_message = "Error: " + self.media_player.errorString()
-        QMessageBox.critical(self, "Error", error_message)
+            error_message =  "Paying next song in song list because of error : " + self.media_player.errorString()
+        QMessageBox.critical(self,"Error:" ,error_message)
+        self.play_pause_song(self.song_list_model.index(self.current_index.row()+1, 0))
+
+    def handle_player_state_changed(self, new_state):
+        if new_state == QMediaPlayer.StoppedState or new_state == QMediaPlayer.PausedState:
+            self.stop_song()
+            # Stop the timer or pause the progress bar update
+            try:
+                self.progress_timer.stop()
+            except AttributeError:
+                pass
+        elif new_state == QMediaPlayer.PlayingState:
+            # Resume the timer or resume the progress bar update
+            try:
+                self.progress_timer.start(1000)
+            except AttributeError:
+                pass
+
+
 
 class App(Api):
     def __init__(self, api):
@@ -410,7 +578,7 @@ class App(Api):
         sys.exit(self.app.exec_())
 
     def initialize(self):
-        self.window = MainWindow(self.api)
+        self.window = MainWindow(self.api,self)
         self.window.setGeometry(self.X, self.Y, self.HEIGHT, self.WIDTH)
         self.window.setWindowTitle("QPlayer")
         self.window.setStyleSheet("""
@@ -421,13 +589,12 @@ class App(Api):
         heading = QLabel(self.window)
         heading.setText("Hello, Welcome!")
         heading.setGeometry(140, 10, 270, 36)
-        heading.setStyleSheet(
-            '''
-                font: 14px "Noto Mono";
-                font-size : 30px;
-                color: #333333;
-            '''
-        )
+        heading.setStyleSheet("""
+            QLabel {
+                font-size: 24px;
+                font-family: monospace;
+            }
+        """)
 
         self.load_songs()
 
