@@ -1,9 +1,9 @@
 #create a skeleton for the pages that list the songs in a certian folder
 import os, json, random
 
-from PyQt5.QtWidgets import QWidget, QListView, QComboBox, QPushButton, QLabel, QHBoxLayout,QVBoxLayout, QGraphicsDropShadowEffect
+from PyQt5.QtWidgets import QWidget, QListView, QSizePolicy,QComboBox, QPushButton, QLineEdit,QLabel, QHBoxLayout,QVBoxLayout, QSpacerItem
 from PyQt5.QtGui import QIcon, QColor
-from PyQt5.QtCore import Qt, QSize
+from PyQt5.QtCore import Qt, QSize 
 from PyQt5.QtMultimedia import QMediaPlayer
 
 
@@ -33,20 +33,6 @@ class SongListPage(QWidget):
 
 
         
-        self.song_list_view = QListView(self)
-        self.song_list_view.setModel(self.song_list_model)
-        self.song_list_view.setStyleSheet('''
-                /* QListView styles */
-                QListView {
-                    background-color: transparent; 
-                    border: 4px solid ;
-                    border-radius: 8px; 
-                    padding: 10px;
-                    margin: 10px;
-                }
-            ''')
-        self.song_list_view.setGeometry(0, 130, 521, 600)
-        self.song_list_view.clicked.connect(self.handler.handle_song_list_item_clicked)
 
         # Add sorting options combo box
         size = QSize(30, 30)
@@ -83,6 +69,19 @@ class SongListPage(QWidget):
         self.sort_button.setIconSize(size)
         self.sort_button.setStyleSheet("background-color: transparent; border: none;")
 
+        self.search_button = QPushButton("",self)
+        self.search_button.setIcon(QIcon("./icons/search.png"))
+        self.search_button.setStyleSheet("background-color: transparent; border: none;")
+        self.search_button.setGeometry(380, 40, 60, 60)
+        self.search_button.setIconSize(size)
+        self.search_button.clicked.connect(self.search)
+
+        self.text_area = QLineEdit(self)
+        self.text_area.setGeometry(300, 55, 90, 30)
+        self.text_area.setPlaceholderText("californica...")
+        self.text_area.setVisible(False)
+
+
         j = json.load(open("./data/info.json"))
         self.current_director = QLabel(self)
         self.current_director.setText(f"Current dir : {j['PATH']}")
@@ -113,10 +112,29 @@ class SongListPage(QWidget):
             }
         """)
 
-        layout = QVBoxLayout()
-        layout.setSpacing(5)
+        self.song_list_view = QListView(self)
+        self.song_list_view.setGeometry(140,10,600,600)
+        self.song_list_view.move(10,140)
+        self.song_list_view.setFixedSize(520, 650)
+        self.song_list_view.setModel(self.song_list_model)
+        self.song_list_view.setStyleSheet('''
+                /* QListView styles */
+                QListView {
+                    background-color: transparent; 
+                    border: 4px solid ;
+                    border-radius: 8px; 
+                    padding: 10px;
+                    margin: 20px;
+                }
+                
+            ''')
+        self.song_list_view.clicked.connect(self.handler.handle_song_list_item_clicked)
 
-        container_layout = QVBoxLayout()
+
+        layout = QVBoxLayout()
+        # layout.setSpacing(5)
+
+        # container_layout = QVBoxLayout()
         
 
         progress_layout = QHBoxLayout() 
@@ -177,6 +195,24 @@ class SongListPage(QWidget):
         self.straight_button.clicked.connect(self.music.on_straight_clicked)
         self.straight_button.setVisible(True)
 
+        self.heart_button_add = QPushButton(self)
+        self.heart_button_add.setIcon(QIcon('./icons/heart_add.png'))
+        self.heart_button_add.setStyleSheet(css)
+        self.heart_button_add.setIconSize(size)
+        self.heart_button_add.clicked.connect(self.on_heart)
+        self.heart_button_add.setVisible(True)
+        self.heart_button_add.setGeometry(430, 90, 100, 100)
+
+        self.heart_button_done = QPushButton(self)
+        self.heart_button_done.setStyleSheet(css)
+        self.heart_button_done.setIcon(QIcon('./icons/heart_done.png'))
+        self.heart_button_done.setIconSize(size)
+        self.heart_button_done.clicked.connect(self.on_heart)
+        self.heart_button_done.setVisible(False)
+        self.heart_button_done.setGeometry(430, 90, 100, 100)
+
+
+
         self.cover_button = ShadowButton("")
         self.cover_button.setStyleSheet("""    
         QPushButton {
@@ -202,13 +238,19 @@ class SongListPage(QWidget):
         buttons_layout.addWidget(self.repeat_button)
         buttons_layout.addWidget(self.shuffle_button)
 
+        features_layout = QHBoxLayout()
+        features_layout.addWidget(self.heart_button_add)
+        features_layout.addWidget(self.heart_button_done)
 
-        container_layout.addLayout(progress_layout)
-        container_layout.addLayout(buttons_layout)
         layout.addStretch()
-        container_layout.addWidget(self.music)
-        layout.addLayout(container_layout)  # Add main container to overall layout
+        # layout.addLayout(features_layout)
+        layout.addLayout(progress_layout)
+        layout.addLayout(buttons_layout)
         self.setLayout(layout)
+
+        
+
+
 
 
 
@@ -234,5 +276,29 @@ class SongListPage(QWidget):
         self.music.playback_queue = ((self.song_list_model_new.songs))
 
 
+    def search(self):
+        print("search")    
+        if not self.text_area.isVisible():
+            self.text_area.setVisible(True)
+        else:
+             self.text_area.setVisible(False)
+
+        self.text_area.textChanged.connect(self.search_songs)
+
+    
+    def search_songs(self):
+        query = self.text_area.text().lower()
+        if query == "" :
+            self.song_list_view.setModel(self.song_list_model)
+        results = [song for song in self.song_list_model.songs if query in song['name'].lower()]
+        self.result = SongListModel(results)           
+        self.music.song_list_model = self.result
+        self.music.set_song_list_model(self.result)  
+        self.song_list_view.setModel(self.result)        
 
 
+
+    def on_heart(self):
+        
+        self.heart_button_add.setVisible(False)
+        self.heart_button_done.setVisible(True)
