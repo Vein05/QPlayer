@@ -295,6 +295,9 @@ class MusicControlsWidget(QWidget):
 
     def update_progress(self):
         if self.api.media_player.duration() is not None and self.api.media_player.position() is not None:
+            if self.api.progress_timer is None:
+                self.create_progress_timer()
+                self.api.progress_timer.start(1000)
             duration = self.api.media_player.duration() / 1000  # Convert to seconds
             position = self.api.media_player.position() / 1000  # Convert to seconds
             progress = int((position / duration) * 100) if duration != 0 else 0
@@ -306,7 +309,6 @@ class MusicControlsWidget(QWidget):
             self.api.progress_timer.stop()
             self.api.stop_song()
 
-
 class MainWindow(QWidget):
     def __init__(self, api, parent=None):
         super().__init__()
@@ -317,26 +319,41 @@ class MainWindow(QWidget):
         self.media_player = QMediaPlayer()
         self.media_player.error.connect(self.handle_media_error)
         self.media_player.mediaStatusChanged.connect(self.handle_media_status_changed)
-        self.media_player.stateChanged.connect(self.handle_player_state_changed)
+        self.media_player.stateChanged.connect(self.handle_media_status_changed)
         self.current_index = QModelIndex()
         self.playback_queue = []
-        
-
         self.progress_timer = None
+
+        
+        
     def setup_ui(self):
         # Initialize and set up the UI components
-        self.setGeometry(500, 500, 534, 900)
-        self.setWindowTitle("Simple Music Player")
+        # self.setGeometry(500, 500, 534, 900)
+        self.setFixedSize(535, 900)
+        self.setWindowTitle("QPlayer")
         self.setStyleSheet("""
             background-color: #a9d6e5;
             
         """)
+        self.heading = QLabel(self)
+        self.heading.setText("Hello, Welcome!")
+        self.heading.setGeometry(0,0,531,36)
+        self.heading.setAlignment(Qt.AlignCenter)
+        self.heading.setStyleSheet("""
+            QLabel {
+                font-size: 24px;
+                font-family: monospace;
+            }
+        """)
+
         self.song_list_model = None
 
         #Addin the buttonso on the lower screen 
         main_layout = QVBoxLayout(self)
 
         self.music_controls_widget = MusicControlsWidget(self)
+        self.music_controls_widget.progress_bar.mousePressEvent = self.handle_progress_bar_click
+
 
         main_layout.addStretch()
         main_layout.addWidget(self.music_controls_widget)
@@ -351,42 +368,52 @@ class MainWindow(QWidget):
         self.song_list_view = QListView(self)
         self.song_list_view.setModel(self.song_list_model)
         self.song_list_view.setStyleSheet('''
-            QListView {
-                background-color: #bee9e8;
-                border-radius: 2px ;
-                padding: 10px;
-                font: bold 12px;
-                font-family: "Arial", sans-serif;
-                font-size: 30px;
-            }
-
-            QListView::item {
-                padding: 5px;
-                outline:none;
-            }
-
-            QListView::item:selected {
-                background-color: #8ecae6;
-                
-            }
-
-
-
+                /* QListView styles */
+                QListView {
+                    background-color: transparent; /* Remove background color */
+                    border: 4px solid ; /* Increase border thickness */
+                    border-radius: 8px; /* Increase border radius */
+                    padding: 10px;
+                    margin: 10px;
+                }
             ''')
         self.song_list_view.setGeometry(0, 130, 521, 600)
         self.song_list_view.clicked.connect(self.handle_song_list_item_clicked)
 
         # Add sorting options combo box
+        size = QSize(30, 30)
         self.sort_combo = QComboBox(self)
-        self.sort_combo.setGeometry(150, 50, 135, 35)
-        self.sort_combo.addItem("Name")
-        self.sort_combo.addItem("Date Added")
+        self.sort_combo.setGeometry(470, 40, 75, 60)
+        name = QIcon("./icons/sort_name.png")
+        date = QIcon("./icons/sort_date.png")
+        self.sort_combo.addItem(name,"")
+        self.sort_combo.addItem(date,"")
+        self.sort_combo.setIconSize(size)
         self.sort_combo.currentIndexChanged.connect(self.sort_songs)
+        self.sort_combo.setStyleSheet("""
+            QComboBox {
+                padding: 2px;
+                border: none;
+                background-color: transparent;
+            }
+
+            QComboBox::down-arrow {
+                image: none;
+            }
+
+            QComboBox:hover, QComboBox:focus {
+                border: none;
+            }
+        """)
+        
 
         # Add sort button
-        self.sort_button = QPushButton("Sort", self)
-        self.sort_button.setGeometry(10, 50, 135, 35)
+        self.sort_button = QPushButton("", self)
+        self.sort_button.setGeometry(420, 40, 60, 60)
         self.sort_button.clicked.connect(self.sort_songs)
+        self.sort_button.setIcon(QIcon("./icons/sort.png"))
+        self.sort_button.setIconSize(size)
+        self.sort_button.setStyleSheet("background-color: transparent; border: none;")
 
         j = json.load(open("./data/info.json"))
         self.current_director = QLabel(self)
@@ -395,23 +422,26 @@ class MainWindow(QWidget):
 
 
     def sort_songs(self):
-        sort_option = self.sort_combo.currentText()
-        if sort_option == "Name":
+        sort_option_index = self.sort_combo.currentIndex()
+        if sort_option_index == 0:
             self.sort_by_name()
-        elif sort_option == "Date Added":
+        elif sort_option_index == 1:
             self.sort_by_date_added()
 
     def sort_by_name(self):
         songs = self.song_list_model.songs
         sorted_songs = sorted(songs, key=lambda x: x['name'])
-        self.song_list_model = SongListModel(sorted_songs)
-        self.song_list_view.setModel(self.song_list_model)
+        self.song_list_model_new = SongListModel(sorted_songs)
+        self.song_list_view.setModel(self.song_list_model_new)
+        self.playback_queue = ((self.song_list_model_new.songs))
 
     def sort_by_date_added(self):
         songs = self.song_list_model.songs
         sorted_songs = sorted(songs, key=lambda x: os.path.getmtime(x['path']))
-        self.song_list_model = SongListModel(sorted_songs)
-        self.song_list_view.setModel(self.song_list_model)
+        self.song_list_model_new = SongListModel(sorted_songs)
+        self.song_list_view.setModel(self.song_list_model_new)
+        self.playback_queue = ((self.song_list_model_new.songs))
+
 
 
 
@@ -467,6 +497,11 @@ class MainWindow(QWidget):
             self.music_controls_widget.pause_button.setVisible(True)
             self.current_index = index
 
+            try:
+                self.progress_timer.start(1000)
+            except AttributeError:
+                pass
+
         # Update cover image and time display
         if song_data['cover_image']:
             default_icon_path = "./icons/default.png"
@@ -478,41 +513,44 @@ class MainWindow(QWidget):
         time = helper.get_time(song_data['duration'])
         self.music_controls_widget.total_label.setText(f"{time}")
 
-        try:
-            self.progress_timer.start(1000)
-        except AttributeError:
-            pass
 
 
-    #     heading = self.findChild(QLabel, "heading")
-    #     heading.setText(song_data['name'])
+        # self.heading.setAlignment(Qt.AlignCenter)
+        heading = self.heading
+        heading.setText(song_data['name'])
 
 
-    #     if hasattr(self, 'marquee_timer'):
-    #         self.marquee_timer.stop()
-    #     self.marquee_timer = QTimer()
-    #     self.marquee_timer.timeout.connect(lambda: self.scroll_heading(heading))
-    #     self.marquee_timer.start(30)  # 30ms timer
+        if hasattr(self, 'marquee_timer'):
+            self.marquee_timer.stop()
+        self.marquee_timer = QTimer()
+        self.marquee_timer.timeout.connect(lambda: self.scroll_heading(heading))
+        self.marquee_timer.start(30)  # 30ms timer
 
-    # def scroll_heading(self, label):
-    #     width = label.fontMetrics().boundingRect(label.text()).width()
-    #     if label.x() < -width:
-    #         label.setX(self.window.width())
-    #     label.setX(label.x() - 1)
+    def scroll_heading(self, label):
+        width = label.fontMetrics().boundingRect(label.text()).width()
+        x = label.x()
+        if x <= -width:
+            x = self.width()
+
+        x -= 1  # Scroll
+
+        label.move(x, label.y())  # Update label position
+
 
     def stop_song(self):
         # Stop the progress timer
         if self.progress_timer is not None:
             try:
                 self.progress_timer.stop()
-                self.progress_timer = None
+                # Reset the progress bar and labels
+                self.music_controls_widget.progress_bar.setValue(0)
+                self.music_controls_widget.elapsed_label.setText("0:00")
+                # self.music_controls_widget.total_label.setText("0:00")
+                        
             except AttributeError:
                 pass
 
-        # Reset the progress bar and labels
-        self.music_controls_widget.progress_bar.setValue(0)
-        self.music_controls_widget.elapsed_label.setText("0:00")
-        # self.music_controls_widget.total_label.setText("0:00")
+
 
     def handle_media_status_changed(self, status):
         if status == QMediaPlayer.EndOfMedia:
@@ -523,6 +561,16 @@ class MainWindow(QWidget):
             
             self.play_pause_song(self.song_list_model.index(next_index))
 
+        if status == QMediaPlayer.PlayingState:
+            pass
+        
+        
+        elif status == QMediaPlayer.PausedState:
+            pass
+
+        elif status == QMediaPlayer.StoppedState:
+            pass
+        
 
 
     def eventFilter(self, obj, event):
@@ -536,21 +584,23 @@ class MainWindow(QWidget):
         self.play_pause_song(index)
 
     def handle_media_error(self, error):
+        self.play_pause_song(self.song_list_model.index(self.current_index.row()+1, 0))
         if error == QMediaPlayer.NoError:
             return
         elif error == QMediaPlayer.ResourceError:
             error_message = "Paying next song in song list because of error : "
+            QMessageBox.critical(self,"Error:" ,error_message)
         else:
             error_message =  "Paying next song in song list because of error : " + self.media_player.errorString()
-        QMessageBox.critical(self,"Error:" ,error_message)
-        self.play_pause_song(self.song_list_model.index(self.current_index.row()+1, 0))
+       
 
     def handle_player_state_changed(self, new_state):
         if new_state == QMediaPlayer.StoppedState or new_state == QMediaPlayer.PausedState:
-            self.stop_song()
+            
             # Stop the timer or pause the progress bar update
             try:
                 self.progress_timer.stop()
+                self.stop_song()
             except AttributeError:
                 pass
         elif new_state == QMediaPlayer.PlayingState:
@@ -559,6 +609,15 @@ class MainWindow(QWidget):
                 self.progress_timer.start(1000)
             except AttributeError:
                 pass
+
+    def handle_progress_bar_click(self, event):
+        if event.button() == Qt.LeftButton:  
+            progress_rect = QRect(0, 0, self.music_controls_widget.progress_bar.width(), self.music_controls_widget.progress_bar.height())   
+            if progress_rect.contains(event.pos()):
+                click_pos = event.pos().x()                
+                duration = self.media_player.duration()       
+                position = (click_pos / self.music_controls_widget.progress_bar.width()) * duration       
+                self.media_player.setPosition(int(position))
 
 
 
@@ -579,26 +638,11 @@ class App(Api):
 
     def initialize(self):
         self.window = MainWindow(self.api,self)
-        self.window.setGeometry(self.X, self.Y, self.HEIGHT, self.WIDTH)
-        self.window.setWindowTitle("QPlayer")
         self.window.setStyleSheet("""
-            background-color: #F5F5F5;
-            color: #333333;
-        """)
+            font: 16px "Helvetica Neue", sans-serif;
 
-        heading = QLabel(self.window)
-        heading.setText("Hello, Welcome!")
-        heading.setGeometry(140, 10, 270, 36)
-        heading.setStyleSheet("""
-            QLabel {
-                font-size: 24px;
-                font-family: monospace;
-            }
         """)
-
         self.load_songs()
-
-
 
 
     def load_songs(self):
