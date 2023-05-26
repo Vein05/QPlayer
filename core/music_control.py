@@ -164,6 +164,10 @@ class MusicControlsWidget(QWidget):
                 position = (click_pos / self.progress_bar.width()) * duration       
                 self.media_player.setPosition(int(position))
 
+    def set_song_list_model(self, new_model):
+        self.song_list_model = new_model
+        self.populate_playback_queue()
+
 
     def create_progress_timer(self):
         self.progress_timer = QTimer()
