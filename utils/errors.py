@@ -8,6 +8,7 @@ class Handler:
 
     def __init__(self,music_control,parent=None):
         super().__init__()
+        self.parent = parent
         self.music_control = music_control
 
 
@@ -39,12 +40,7 @@ class Handler:
         
 
 
-    def eventFilter(self, obj, event):
-        if event.type() == QEvent.KeyPress:
-            if obj == self.song_list_view:  # Handle events only for the QListView
-                if event.key() == Qt.Key_Space:
-                    self.music_control.play_pause_song(self.music_control.current_index)
-        return super().eventFilter(obj, event)
+
 
     def handle_song_list_item_clicked(self, index):
         self.music_control.play_pause_song(index)
