@@ -4,17 +4,17 @@ from PyQt5.QtCore import QSize, QUrl, QTimer, Qt, QRect, QModelIndex
 from utils import helper
 from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent 
 import random
+from utils.scroll import ScrollableProgressBar
 
 
 class MusicControlsWidget(QWidget):
     def __init__(self, song_list_model, parent=None, **kwargs):
         super().__init__()
         self.song_list_model = song_list_model
-        self.progress_bar = QProgressBar()
+        self.progress_bar = ScrollableProgressBar(self)
         self.current_index = QModelIndex()
         self.playback_queue = []
         self.progress_timer = None
-        self.progress_bar.mousePressEvent = self.handle_progress_bar_click
         self.parent = parent
         self.media_player = parent.media_player
 
@@ -93,9 +93,9 @@ class MusicControlsWidget(QWidget):
 
         song_data = self.playback_queue[index.row()]
         media_content = QMediaContent(QUrl.fromLocalFile(song_data['path']))
-
         if index == self.current_index:
-            if self.media_player.state() == QMediaPlayer.PlayingState:
+
+            if self.parent.media_player.state() == QMediaPlayer.PlayingState:
                 self.media_player.pause()
                 self.parent.play_button.setVisible(True)
                 self.parent.pause_button.setVisible(False)
@@ -104,6 +104,7 @@ class MusicControlsWidget(QWidget):
 
                 self.progress_timer.stop()
             else:
+                print("stoped")
                 self.media_player.play()
                 self.parent.play_button.setVisible(False)
                 self.parent.pause_button.setVisible(True)
@@ -133,7 +134,7 @@ class MusicControlsWidget(QWidget):
 
 
 
-        # self.heading.setAlignment(Qt.AlignCenter)
+        
         heading = self.parent.heading
         heading.setText(song_data['name'])
 
@@ -145,24 +146,19 @@ class MusicControlsWidget(QWidget):
         self.marquee_timer.start(20)  # 30ms timer
 
     def scroll_heading(self, label):
-        width = label.fontMetrics().boundingRect(label.text()).width()
+        width = label.width()  
         x = label.x()
+
         if x <= -width:
             x = self.width()
 
-        x -= 1  # Scroll
+        x -= 1 
 
-        label.move(x, label.y())  # Update label position
+        if x + width <= 0:
+            x = self.width()
 
+        label.move(x, label.y())  
 
-    def handle_progress_bar_click(self, event):
-        if event.button() == Qt.LeftButton:  
-            progress_rect = QRect(0, 0, self.progress_bar.width(), self.progress_bar.height())   
-            if progress_rect.contains(event.pos()):
-                click_pos = event.pos().x()                
-                duration = self.media_player.duration()       
-                position = (click_pos / self.progress_bar.width()) * duration       
-                self.media_player.setPosition(int(position))
 
     def set_song_list_model(self, new_model):
         self.song_list_model = new_model
