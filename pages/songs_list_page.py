@@ -2,8 +2,8 @@
 import os, json, random
 
 from PyQt5.QtWidgets import QWidget, QListView, QSizePolicy,QComboBox, QPushButton, QLineEdit,QLabel, QHBoxLayout,QVBoxLayout, QSpacerItem
-from PyQt5.QtGui import QIcon, QColor
-from PyQt5.QtCore import Qt, QSize 
+from PyQt5.QtGui import QIcon, QColor, QBrush, QPalette, QLinearGradient
+from PyQt5.QtCore import Qt, QSize , QEvent
 from PyQt5.QtMultimedia import QMediaPlayer
 
 
@@ -18,6 +18,7 @@ class SongListPage(QWidget):
         super().__init__(parent)
         self.api = api
         self.media_player = QMediaPlayer()
+        self.c=0
 
         
 
@@ -93,17 +94,28 @@ class SongListPage(QWidget):
 
 
     def setup_ui(self):
+        # Set up gradient background
+        gradient = QLinearGradient(0, 0, 0, self.height())
+        # gradient.setColorAt(0, QColor("#F55A9B"))
+        # gradient.setColorAt(1, QColor("#68E3F9"))
+        gradient.setColorAt(1, QColor("#595cff"))
+        gradient.setColorAt(0, QColor("#c6f8ff"))
+
+
+        palette = self.palette()
+        palette.setBrush(QPalette.Background, QBrush(gradient))
+        self.setPalette(palette)
+
         # Initialize and set up the UI components
         # self.setGeometry(500, 500, 534, 900)
         self.setFixedSize(535, 900)
         self.setWindowTitle("QPlayer")
         self.setStyleSheet("""
             font: 16px "Helvetica Neue", sans-serif;
-            background-color: #a9d6e5;
         """)
         self.heading = QLabel(self)
         self.heading.setText("Hello, Welcome!")
-        self.heading.setGeometry(0, 0, 531, 36)
+        self.heading.setGeometry(0, 0, 500, 36)
         self.heading.setAlignment(Qt.AlignCenter)
         self.heading.setStyleSheet("""
             QLabel {
@@ -117,6 +129,11 @@ class SongListPage(QWidget):
         self.song_list_view.move(10,140)
         self.song_list_view.setFixedSize(520, 650)
         self.song_list_view.setModel(self.song_list_model)
+        self.song_list_view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.song_list_view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.song_list_view.installEventFilter(self)
+
+
         self.song_list_view.setStyleSheet('''
                 /* QListView styles */
                 QListView {
@@ -137,7 +154,7 @@ class SongListPage(QWidget):
         # container_layout = QVBoxLayout()
         
 
-        progress_layout = QHBoxLayout() 
+        progress_layout = QHBoxLayout()
         self.elapsed_label = QLabel("0:00")
         self.total_label = QLabel("0:00") 
         progress_layout.addWidget(self.elapsed_label)
@@ -277,9 +294,9 @@ class SongListPage(QWidget):
 
 
     def search(self):
-        print("search")    
         if not self.text_area.isVisible():
             self.text_area.setVisible(True)
+            self.text_area.setFocus()
         else:
              self.text_area.setVisible(False)
 
@@ -299,6 +316,34 @@ class SongListPage(QWidget):
 
 
     def on_heart(self):
+        if self.heart_button_add.isVisible():
+            self.heart_button_add.setVisible(False)
+            self.heart_button_done.setVisible(True)
+            self.fav(0)
         
-        self.heart_button_add.setVisible(False)
-        self.heart_button_done.setVisible(True)
+        else:
+            self.heart_button_add.setVisible(True)
+            self.heart_button_done.setVisible(False)
+            self.fav(1)
+    
+
+    def fav(self, index):
+        if index == 0:
+            print("Make fav")
+        
+        elif index == 1:
+            print("remove fav")
+
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.KeyPress:
+            if event.isAutoRepeat():
+                return super().eventFilter(obj, event)
+            if obj == self.song_list_view:
+                if event.key() == Qt.Key_Space:
+                    if self.c==1:
+                        self.music.play_pause_song(self.music.current_index)    
+                        self.c=0
+                    else:
+                        self.c+=1
+        return super().eventFilter(obj, event)
