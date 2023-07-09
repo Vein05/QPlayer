@@ -85,7 +85,7 @@ class SongListPage(QWidget):
 
         j = json.load(open("./data/info.json"))
         self.current_director = QLabel(self)
-        self.current_director.setText(f"Current dir : {j['PATH']}")
+        self.current_director.setText(f"Current dir : {j['DEFAULT_PATH']}")
         self.current_director.setGeometry(10,90,521, 30)
 
         self.media_player.error.connect(self.handler.handle_media_error)

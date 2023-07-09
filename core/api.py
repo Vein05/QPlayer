@@ -13,7 +13,7 @@ class Api:
             os.makedirs(data_folder)
 
         with open(file_path, "w") as w:
-            json.dump({"PATH": self.PATH}, w)
+            json.dump({"DEFAULT_PATH": self.PATH}, w, indent=4)
             
         self.get_songs(self.PATH)
 
