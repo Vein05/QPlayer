@@ -20,7 +20,7 @@ class Tag:
         self.composer = self.info.composer
 
         if Tag.default_image is None:
-            with open("./icons/default.png", 'rb') as file:
+            with open("./icons/default.jpg", 'rb') as file:
                 Tag.default_image = self.reduce_image(file.read())
 
     def name(self):
